@@ -34,11 +34,13 @@ MainWindow::MainWindow(QWidget *parent)
 {
     setWindowTitle("Q - Simple R IDE");
     resize(1200, 800);
+    setDockNestingEnabled(true);
     
     // Create central placeholder and make the editor tabs dockable so the
     // user can drag/float the "Script" pane like other docks.
-    QWidget *centralPlaceholder = new QWidget(this);
-    setCentralWidget(centralPlaceholder);
+    // We set the central widget to nullptr so that the dock widgets (which contain all our content)
+    // expand to fill the entire window, preventing any "unused space" or gaps.
+    setCentralWidget(nullptr);
 
     editorTabs = new QTabWidget(this);
     editorTabs->setTabsClosable(true);
@@ -446,6 +448,11 @@ void MainWindow::setDefaultLayoutSizes()
         if (envDock) envDock->installEventFilter(this);
         if (editorTabs) editorTabs->installEventFilter(this);
         
+        // Also install on splitters to catch their resize events
+        for (QSplitter *s : splitters) {
+            if (s) s->installEventFilter(this);
+        }
+        
         // Connect to dock visibility changes to trigger layout adjustment
         connect(scriptDock, &QDockWidget::topLevelChanged, this, [this](bool floating) {
             if (!floating) {
@@ -468,16 +475,41 @@ void MainWindow::setDefaultLayoutSizes()
             }
         });
         
-        // Track splitter movements - user manual adjustments will be respected
-        // until next window resize/state change
+        // Track splitter movements - apply magnet behavior after user adjusts
         for (QSplitter *s : splitters) {
             if (!s) continue;
-            connect(s, &QSplitter::splitterMoved, this, [this](int pos, int index) {
+            connect(s, &QSplitter::splitterMoved, this, [this, s](int pos, int index) {
                 Q_UNUSED(pos);
                 Q_UNUSED(index);
-                // User is manually adjusting - temporarily disable auto-apply
-                // Will re-enable on next window resize/maximize/minimize
-                m_autoApplyLayout = false;
+                // After user drags, ensure no gaps remain (magnet behavior)
+                QTimer::singleShot(100, this, [this, s]() {
+                    if (!s || !s->isVisible()) return;
+                    
+                    // Check if there's a gap and fill it
+                    QList<int> currentSizes = s->sizes();
+                    int available = (s->orientation() == Qt::Horizontal) ? s->width() : s->height();
+                    int currentTotal = 0;
+                    for (int size : currentSizes) {
+                        currentTotal += size;
+                    }
+                    
+                    // If there's a gap, redistribute proportionally
+                    if (currentTotal < available && currentTotal > 0) {
+                        double scale = (double)available / currentTotal;
+                        QList<int> newSizes;
+                        int sum = 0;
+                        for (int i = 0; i < currentSizes.size(); ++i) {
+                            if (i == currentSizes.size() - 1) {
+                                newSizes << (available - sum);
+                            } else {
+                                int newSize = qRound(currentSizes[i] * scale);
+                                newSizes << newSize;
+                                sum += newSize;
+                            }
+                        }
+                        s->setSizes(newSizes);
+                    }
+                });
             });
         }
     });
@@ -485,12 +517,48 @@ void MainWindow::setDefaultLayoutSizes()
 
 void MainWindow::applySplitterRatios()
 {
-    // Apply fixed ratios proportionally to current splitter sizes.
+    // Apply fixed ratios and ensure splitters fill 100% of available space.
+    // Magnet behavior: always fill gaps, maintain proportions
     // Left/right: 75% / 25%
     // Top/bottom (left column): 60% / 40%
     // Right column: 100% height (handled by tabified docks)
     
     QList<QSplitter*> splitters = this->findChildren<QSplitter*>();
+    
+    // Process all splitters to ensure they fill available space
+    for (QSplitter *s : splitters) {
+        if (!s || !s->isVisible() || s->count() < 2) continue;
+        
+        QList<int> currentSizes = s->sizes();
+        if (currentSizes.isEmpty()) continue;
+        
+        // Calculate total available space
+        int available = (s->orientation() == Qt::Horizontal) ? s->width() : s->height();
+        int currentTotal = 0;
+        for (int size : currentSizes) {
+            currentTotal += size;
+        }
+        
+        // If there's a gap (currentTotal < available), redistribute to fill
+        if (currentTotal < available && currentTotal > 0) {
+            double scale = (double)available / currentTotal;
+            QList<int> newSizes;
+            int sum = 0;
+            for (int i = 0; i < currentSizes.size(); ++i) {
+                if (i == currentSizes.size() - 1) {
+                    // Last widget gets remainder to ensure exact total
+                    newSizes << (available - sum);
+                } else {
+                    int newSize = qRound(currentSizes[i] * scale);
+                    newSizes << newSize;
+                    sum += newSize;
+                }
+            }
+            s->setSizes(newSizes);
+        }
+    }
+    
+    // Now apply desired ratios to main splitters
     QSplitter *mainH = nullptr;
     QSplitter *leftV = nullptr;
 
@@ -509,27 +577,72 @@ void MainWindow::applySplitterRatios()
 
     // Apply horizontal split: left 75%, right 25%
     if (mainH && mainH->count() >= 2) {
-        int total = qMax(100, mainH->width());
-        QList<int> currentSizes = mainH->sizes();
-        
-        // Only apply if both widgets are visible
-        if (currentSizes.size() >= 2 && currentSizes[0] > 0 && currentSizes[1] > 0) {
-            QList<int> sizes;
-            sizes << (total * 3) / 4 << total / 4;
-            mainH->setSizes(sizes);
+        int total = mainH->width();
+        if (total > 100) {
+            QList<int> currentSizes = mainH->sizes();
+            
+            // Apply if both widgets are visible
+            if (currentSizes.size() >= 2 && currentSizes[0] > 0 && currentSizes[1] > 0) {
+                int left = (total * 3) / 4;
+                int right = total - left;  // Exact remainder, no gaps
+                QList<int> sizes;
+                sizes << left << right;
+                mainH->setSizes(sizes);
+            }
         }
     }
 
     // Apply vertical split in left column: top 60%, bottom 40%
     if (leftV && leftV->count() >= 2) {
-        int total = qMax(100, leftV->height());
-        QList<int> currentSizes = leftV->sizes();
+        int total = leftV->height();
+        if (total > 100) {
+            QList<int> currentSizes = leftV->sizes();
+            
+            // Apply if both widgets are visible
+            if (currentSizes.size() >= 2 && currentSizes[0] > 0 && currentSizes[1] > 0) {
+                int top = (total * 60) / 100;
+                int bottom = total - top;  // Exact remainder, no gaps
+                QList<int> vsizes;
+                vsizes << top << bottom;
+                leftV->setSizes(vsizes);
+            }
+        }
+    }
+}
+
+void MainWindow::forceUpdateSplitters()
+{
+    // Force all splitters to refresh and fill available space
+    QList<QSplitter*> splitters = this->findChildren<QSplitter*>();
+    
+    for (QSplitter *s : splitters) {
+        if (!s || !s->isVisible() || s->count() < 2) continue;
         
-        // Only apply if both widgets are visible
-        if (currentSizes.size() >= 2 && currentSizes[0] > 0 && currentSizes[1] > 0) {
-            QList<int> vsizes;
-            vsizes << (total * 60) / 100 << (total * 40) / 100;
-            leftV->setSizes(vsizes);
+        QList<int> sizes = s->sizes();
+        if (sizes.isEmpty()) continue;
+        
+        // Get actual available space
+        int available = (s->orientation() == Qt::Horizontal) ? s->width() : s->height();
+        int total = 0;
+        for (int size : sizes) {
+            total += size;
+        }
+        
+        // If there's any discrepancy, force a redistribution
+        if (total != available && available > 0 && total > 0) {
+            // Redistribute proportionally
+            QList<int> newSizes;
+            int sum = 0;
+            for (int i = 0; i < sizes.size(); ++i) {
+                if (i == sizes.size() - 1) {
+                    newSizes << (available - sum);
+                } else {
+                    int newSize = (sizes[i] * available) / total;
+                    newSizes << newSize;
+                    sum += newSize;
+                }
+            }
+            s->setSizes(newSizes);
         }
     }
 }
@@ -541,6 +654,17 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
         QDockWidget *dock = qobject_cast<QDockWidget*>(obj);
         if (dock && m_stickyPanes) {
             QTimer::singleShot(50, this, &MainWindow::adjustLayoutAfterDockChange);
+        }
+    }
+    
+    // Handle splitter resize events - apply magnets immediately
+    if (event->type() == QEvent::Resize) {
+        QSplitter *splitter = qobject_cast<QSplitter*>(obj);
+        if (splitter && m_stickyPanes) {
+            QTimer::singleShot(0, this, [this]() {
+                forceUpdateSplitters();
+                applySplitterRatios();
+            });
         }
     }
 
@@ -599,10 +723,18 @@ void MainWindow::adjustLayoutAfterDockChange()
 void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
-    // Re-enable auto-apply on window resize and apply layout ratios
-    // This fixes gaps from maximize/minimize
-    m_autoApplyLayout = true;
+    // Apply magnet behavior multiple times to catch all Qt layout updates
+    // This ensures no gaps remain after maximize/minimize/resize
+    QTimer::singleShot(0, this, [this]() {
+        forceUpdateSplitters();
+        applySplitterRatios();
+    });
     QTimer::singleShot(50, this, [this]() {
+        forceUpdateSplitters();
+        applySplitterRatios();
+    });
+    QTimer::singleShot(150, this, [this]() {
+        forceUpdateSplitters();
         applySplitterRatios();
     });
 }
@@ -611,9 +743,21 @@ void MainWindow::changeEvent(QEvent *event)
 {
     QMainWindow::changeEvent(event);
     if (event->type() == QEvent::WindowStateChange) {
-        // Always reapply layout on window state changes (maximize, minimize, restore)
-        // This fixes gaps that appear after maximize/minimize
+        // Apply multiple times to catch all layout updates during state changes
+        QTimer::singleShot(0, this, [this]() {
+            forceUpdateSplitters();
+            applySplitterRatios();
+        });
         QTimer::singleShot(100, this, [this]() {
+            forceUpdateSplitters();
+            applySplitterRatios();
+        });
+        QTimer::singleShot(200, this, [this]() {
+            forceUpdateSplitters();
+            applySplitterRatios();
+        });
+        QTimer::singleShot(300, this, [this]() {
+            forceUpdateSplitters();
             applySplitterRatios();
         });
     }

@@ -48,6 +48,7 @@ private:
     void setDefaultLayoutSizes();
     void applySplitterRatios();
     void adjustLayoutAfterDockChange();
+    void forceUpdateSplitters();
     void resizeEvent(QResizeEvent *event) override;
     void changeEvent(QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
