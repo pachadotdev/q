@@ -215,8 +215,7 @@ void TerminalWidget::setTheme(const EditorTheme &theme)
     writeColor("Color6Intense", theme.color_15);
     writeColor("Color7Intense", theme.color_16);
     
-    // Try to write to both qtermwidget5 and qtermwidget6 locations
-    // as we don't know which version is linked at runtime
+    // Write to qtermwidget6 locations
     QString dataLoc = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
     QString configLoc = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation);
     QString home = QDir::homePath();
@@ -224,15 +223,11 @@ void TerminalWidget::setTheme(const EditorTheme &theme)
     QStringList schemeDirs;
     // Standard XDG data locations
     schemeDirs << dataLoc + "/qtermwidget6/color-schemes";
-    schemeDirs << dataLoc + "/qtermwidget5/color-schemes";
     // Standard XDG config locations
     schemeDirs << configLoc + "/qtermwidget6/color-schemes";
-    schemeDirs << configLoc + "/qtermwidget5/color-schemes";
     // Explicit home locations (fallback)
     schemeDirs << home + "/.local/share/qtermwidget6/color-schemes";
-    schemeDirs << home + "/.local/share/qtermwidget5/color-schemes";
     schemeDirs << home + "/.config/qtermwidget6/color-schemes";
-    schemeDirs << home + "/.config/qtermwidget5/color-schemes";
     // Application directory (portable)
     schemeDirs << QCoreApplication::applicationDirPath() + "/color-schemes";
     

@@ -11,15 +11,8 @@ set(CMAKE_AUTOUIC ON)
 # Find Qt6
 find_package(Qt6 REQUIRED COMPONENTS Core Widgets Gui Network)
 
-# Find qtermwidget (Qt6 version preferred)
-find_package(qtermwidget6 QUIET)
-if(NOT qtermwidget6_FOUND)
-    message(STATUS "qtermwidget6 not found, trying qtermwidget5")
-    find_package(qtermwidget5 QUIET)
-    if(NOT qtermwidget5_FOUND)
-        message(FATAL_ERROR "qtermwidget not found. Please install qtermwidget5 or qtermwidget6")
-    endif()
-endif()
+# Find qtermwidget6
+find_package(qtermwidget6 REQUIRED)
 
 # Find R
 find_program(R_EXECUTABLE R)
@@ -69,14 +62,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Network
 )
 
-# Link qtermwidget
-if(qtermwidget6_FOUND)
-    target_link_libraries(${PROJECT_NAME} PRIVATE qtermwidget6)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${qtermwidget6_INCLUDE_DIRS})
-elseif(qtermwidget5_FOUND)
-    target_link_libraries(${PROJECT_NAME} PRIVATE qtermwidget5)
-    target_include_directories(${PROJECT_NAME} PRIVATE ${qtermwidget5_INCLUDE_DIRS})
-endif()
+# Link qtermwidget6
+target_link_libraries(${PROJECT_NAME} PRIVATE qtermwidget6)
+target_include_directories(${PROJECT_NAME} PRIVATE ${qtermwidget6_INCLUDE_DIRS})
 
 # Set output directory
 set_target_properties(${PROJECT_NAME} PROPERTIES
