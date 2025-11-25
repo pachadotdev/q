@@ -283,6 +283,7 @@ void MainWindow::createDockWidgets()
     envDock->setWidget(envPane);
     addDockWidget(Qt::RightDockWidgetArea, envDock);
     tabifyDockWidget(filesDock, envDock);
+    setTabPosition(Qt::RightDockWidgetArea, QTabWidget::North);
 }
 
 void MainWindow::setupConnections()
