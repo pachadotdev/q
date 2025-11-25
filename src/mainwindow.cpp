@@ -357,11 +357,14 @@ void MainWindow::loadSettings()
         consoleDock->setFloating(false);
 
         // Place files and environment in the right dock area and tabify them
+        // This ensures they take 100% of the right column height
         addDockWidget(Qt::RightDockWidgetArea, filesDock);
         addDockWidget(Qt::RightDockWidgetArea, envDock);
         tabifyDockWidget(filesDock, envDock);
         filesDock->setVisible(true);
         envDock->setVisible(true);
+        // Raise files dock to be the active tab
+        filesDock->raise();
 
         // Split the left area so console is below scripts
         splitDockWidget(scriptDock, consoleDock, Qt::Vertical);
@@ -424,32 +427,59 @@ void MainWindow::setDefaultLayoutSizes()
             QList<int> sizes;
             sizes << total * 3 / 4 << total / 4;
             mainH->setSizes(sizes);
+            m_mainSplitter = mainH;
         }
 
-        // Set heights in left column: scripts ~70%, console ~30%
+        // Set heights in left column: scripts 60%, console 40%
         if (leftV) {
             int total = qMax(100, leftV->height());
             QList<int> vsizes;
-            vsizes << total * 70 / 100 << total * 30 / 100;
+            vsizes << total * 60 / 100 << total * 40 / 100;
             leftV->setSizes(vsizes);
+            m_leftSplitter = leftV;
         }
 
-        // If user manually moves a splitter, stop auto-applying ratios so we don't fight them.
+        // Install event filters on all docks for "magnet" behavior
+        if (scriptDock) scriptDock->installEventFilter(this);
+        if (consoleDock) consoleDock->installEventFilter(this);
+        if (filesDock) filesDock->installEventFilter(this);
+        if (envDock) envDock->installEventFilter(this);
+        if (editorTabs) editorTabs->installEventFilter(this);
+        
+        // Connect to dock visibility changes to trigger layout adjustment
+        connect(scriptDock, &QDockWidget::topLevelChanged, this, [this](bool floating) {
+            if (!floating) {
+                QTimer::singleShot(100, this, &MainWindow::adjustLayoutAfterDockChange);
+            }
+        });
+        connect(consoleDock, &QDockWidget::topLevelChanged, this, [this](bool floating) {
+            if (!floating) {
+                QTimer::singleShot(100, this, &MainWindow::adjustLayoutAfterDockChange);
+            }
+        });
+        connect(filesDock, &QDockWidget::topLevelChanged, this, [this](bool floating) {
+            if (!floating) {
+                QTimer::singleShot(100, this, &MainWindow::adjustLayoutAfterDockChange);
+            }
+        });
+        connect(envDock, &QDockWidget::topLevelChanged, this, [this](bool floating) {
+            if (!floating) {
+                QTimer::singleShot(100, this, &MainWindow::adjustLayoutAfterDockChange);
+            }
+        });
+        
+        // Track splitter movements - user manual adjustments will be respected
+        // until next window resize/state change
         for (QSplitter *s : splitters) {
             if (!s) continue;
-            // Remember the main/left splitters for sticky behavior
-            if (s->orientation() == Qt::Horizontal && !m_mainSplitter) m_mainSplitter = s;
-            if (s->orientation() == Qt::Vertical && !m_leftSplitter) m_leftSplitter = s;
-
-            // Use a lambda to disable auto-apply when user moves any splitter
-            connect(s, &QSplitter::splitterMoved, this, [this]() {
+            connect(s, &QSplitter::splitterMoved, this, [this](int pos, int index) {
+                Q_UNUSED(pos);
+                Q_UNUSED(index);
+                // User is manually adjusting - temporarily disable auto-apply
+                // Will re-enable on next window resize/maximize/minimize
                 m_autoApplyLayout = false;
             });
         }
-
-        // Install event filter on the script dock so we can implement "sticky" behavior
-        if (scriptDock) scriptDock->installEventFilter(this);
-        if (editorTabs) editorTabs->installEventFilter(this);
     });
 }
 
@@ -457,7 +487,9 @@ void MainWindow::applySplitterRatios()
 {
     // Apply fixed ratios proportionally to current splitter sizes.
     // Left/right: 75% / 25%
-    // Top/bottom (left column): 70% / 30%
+    // Top/bottom (left column): 60% / 40%
+    // Right column: 100% height (handled by tabified docks)
+    
     QList<QSplitter*> splitters = this->findChildren<QSplitter*>();
     QSplitter *mainH = nullptr;
     QSplitter *leftV = nullptr;
@@ -465,70 +497,124 @@ void MainWindow::applySplitterRatios()
     int bestH = 0;
     int bestV = 0;
     for (QSplitter *s : splitters) {
-        if (!s) continue;
+        if (!s || !s->isVisible()) continue;
         if (s->orientation() == Qt::Horizontal) {
-            if (s->width() > bestH) { bestH = s->width(); mainH = s; }
+            int w = s->width();
+            if (w > bestH) { bestH = w; mainH = s; }
         } else {
-            if (s->height() > bestV) { bestV = s->height(); leftV = s; }
+            int h = s->height();
+            if (h > bestV) { bestV = h; leftV = s; }
         }
     }
 
-    if (mainH) {
+    // Apply horizontal split: left 75%, right 25%
+    if (mainH && mainH->count() >= 2) {
         int total = qMax(100, mainH->width());
-        QList<int> sizes;
-        sizes << total * 3 / 4 << total - (total * 3 / 4);
-        mainH->setSizes(sizes);
+        QList<int> currentSizes = mainH->sizes();
+        
+        // Only apply if both widgets are visible
+        if (currentSizes.size() >= 2 && currentSizes[0] > 0 && currentSizes[1] > 0) {
+            QList<int> sizes;
+            sizes << (total * 3) / 4 << total / 4;
+            mainH->setSizes(sizes);
+        }
     }
 
-    if (leftV) {
+    // Apply vertical split in left column: top 60%, bottom 40%
+    if (leftV && leftV->count() >= 2) {
         int total = qMax(100, leftV->height());
-        QList<int> vsizes;
-        vsizes << total * 70 / 100 << total - (total * 70 / 100);
-        leftV->setSizes(vsizes);
+        QList<int> currentSizes = leftV->sizes();
+        
+        // Only apply if both widgets are visible
+        if (currentSizes.size() >= 2 && currentSizes[0] > 0 && currentSizes[1] > 0) {
+            QList<int> vsizes;
+            vsizes << (total * 60) / 100 << (total * 40) / 100;
+            leftV->setSizes(vsizes);
+        }
     }
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *event)
 {
-    // Only handle resize events for the script area when sticky panes are enabled
-    if (m_stickyPanes && event->type() == QEvent::Resize) {
-        if (obj == scriptDock || obj == editorTabs) {
-            // Apply the main splitter sizes after Qt updates layouts
-            QTimer::singleShot(0, this, [this]() {
-                if (!m_stickyPanes || !m_mainSplitter) return;
-                QWidget *leftWidget = m_mainSplitter->widget(0);
-                if (!leftWidget) return;
-                int total = qMax(100, m_mainSplitter->width());
-                int left = leftWidget->width();
-                int right = total - left;
-                if (right < 50) right = 50; // keep a minimum
-                if (left < 50) left = 50;
-                m_mainSplitter->setSizes({left, right});
-            });
-            // let the normal processing continue
-            return false;
+    // Handle dock widget changes for magnet behavior
+    if (event->type() == QEvent::ParentChange || event->type() == QEvent::Show) {
+        QDockWidget *dock = qobject_cast<QDockWidget*>(obj);
+        if (dock && m_stickyPanes) {
+            QTimer::singleShot(50, this, &MainWindow::adjustLayoutAfterDockChange);
         }
     }
 
     return QMainWindow::eventFilter(obj, event);
 }
 
+void MainWindow::adjustLayoutAfterDockChange()
+{
+    // Readjust splitter sizes after a dock widget is moved or undocked
+    if (!m_stickyPanes) return;
+    
+    QList<QSplitter*> splitters = this->findChildren<QSplitter*>();
+    
+    // Find main horizontal and vertical splitters
+    QSplitter *mainH = nullptr;
+    QSplitter *leftV = nullptr;
+    
+    int bestH = 0;
+    int bestV = 0;
+    for (QSplitter *s : splitters) {
+        if (!s || !s->isVisible()) continue;
+        if (s->orientation() == Qt::Horizontal) {
+            if (s->width() > bestH) { bestH = s->width(); mainH = s; }
+        } else {
+            if (s->height() > bestV) { bestV = s->height(); leftV = s; }
+        }
+    }
+    
+    // Apply 75/25 horizontal split
+    if (mainH && mainH->count() >= 2) {
+        int total = qMax(100, mainH->width());
+        QList<int> currentSizes = mainH->sizes();
+        
+        // Only adjust if both sides are visible
+        if (currentSizes.size() >= 2 && currentSizes[0] > 0 && currentSizes[1] > 0) {
+            QList<int> newSizes;
+            newSizes << total * 3 / 4 << total / 4;
+            mainH->setSizes(newSizes);
+        }
+    }
+    
+    // Apply 60/40 vertical split in left column
+    if (leftV && leftV->count() >= 2) {
+        int total = qMax(100, leftV->height());
+        QList<int> currentSizes = leftV->sizes();
+        
+        // Only adjust if both sides are visible
+        if (currentSizes.size() >= 2 && currentSizes[0] > 0 && currentSizes[1] > 0) {
+            QList<int> newSizes;
+            newSizes << total * 60 / 100 << total * 40 / 100;
+            leftV->setSizes(newSizes);
+        }
+    }
+}
+
 void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
-    if (m_autoApplyLayout) {
-        QTimer::singleShot(0, this, [this]() {
-            if (m_autoApplyLayout) applySplitterRatios();
-        });
-    }
+    // Re-enable auto-apply on window resize and apply layout ratios
+    // This fixes gaps from maximize/minimize
+    m_autoApplyLayout = true;
+    QTimer::singleShot(50, this, [this]() {
+        applySplitterRatios();
+    });
 }
 
 void MainWindow::changeEvent(QEvent *event)
 {
     QMainWindow::changeEvent(event);
-    if (m_autoApplyLayout && event->type() == QEvent::WindowStateChange) {
-        QTimer::singleShot(0, this, [this]() {
-            if (m_autoApplyLayout) applySplitterRatios();
+    if (event->type() == QEvent::WindowStateChange) {
+        // Always reapply layout on window state changes (maximize, minimize, restore)
+        // This fixes gaps that appear after maximize/minimize
+        QTimer::singleShot(100, this, [this]() {
+            applySplitterRatios();
         });
     }
 }
