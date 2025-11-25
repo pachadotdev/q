@@ -13,6 +13,7 @@ RConsole::RConsole(RProcess *rProcess, QWidget *parent)
     , isHidingOutput(false)
 {
     setReadOnly(false);
+    setAcceptRichText(false);
     
     // Get current theme
     currentTheme = ThemeManager::instance().currentTheme();
@@ -111,6 +112,7 @@ void RConsole::onOutputReceived(const QString &output)
     // Set color for output
     QTextCharFormat format;
     format.setForeground(currentTheme.foreground);
+    format.setBackground(currentTheme.background);
     cursor.setCharFormat(format);
     
     // Strip trailing prompts from R output to avoid duplication
@@ -172,6 +174,7 @@ void RConsole::onErrorReceived(const QString &error)
     // Set color for errors (use keyword color for emphasis)
     QTextCharFormat format;
     format.setForeground(currentTheme.keyword);
+    format.setBackground(currentTheme.background);
     cursor.setCharFormat(format);
     
     cursor.insertText(cleanError);
@@ -187,10 +190,10 @@ void RConsole::appendPrompt()
 {
     QTextCursor cursor = textCursor();
     cursor.movePosition(QTextCursor::End);
-    
     // Set color for prompt
     QTextCharFormat format;
     format.setForeground(currentTheme.function);
+    format.setBackground(currentTheme.background);
     format.setFontWeight(QFont::Bold);
     cursor.setCharFormat(format);
     
@@ -198,6 +201,7 @@ void RConsole::appendPrompt()
     
     // Reset format for user input
     format.setForeground(currentTheme.foreground);
+    format.setBackground(currentTheme.background);
     format.setFontWeight(QFont::Normal);
     cursor.setCharFormat(format);
     

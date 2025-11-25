@@ -455,6 +455,7 @@ void MainWindow::setDefaultLayoutSizes()
         }
         
         // Connect to dock visibility changes to trigger layout adjustment
+        /*
         connect(scriptDock, &QDockWidget::topLevelChanged, this, [this](bool floating) {
             if (!floating) {
                 QTimer::singleShot(100, this, &MainWindow::adjustLayoutAfterDockChange);
@@ -475,42 +476,15 @@ void MainWindow::setDefaultLayoutSizes()
                 QTimer::singleShot(100, this, &MainWindow::adjustLayoutAfterDockChange);
             }
         });
+        */
         
-        // Track splitter movements - apply magnet behavior after user adjusts
+        // Track splitter movements
         for (QSplitter *s : splitters) {
             if (!s) continue;
             connect(s, &QSplitter::splitterMoved, this, [this, s](int pos, int index) {
                 Q_UNUSED(pos);
                 Q_UNUSED(index);
-                // After user drags, ensure no gaps remain (magnet behavior)
-                QTimer::singleShot(100, this, [this, s]() {
-                    if (!s || !s->isVisible()) return;
-                    
-                    // Check if there's a gap and fill it
-                    QList<int> currentSizes = s->sizes();
-                    int available = (s->orientation() == Qt::Horizontal) ? s->width() : s->height();
-                    int currentTotal = 0;
-                    for (int size : currentSizes) {
-                        currentTotal += size;
-                    }
-                    
-                    // If there's a gap, redistribute proportionally
-                    if (currentTotal < available && currentTotal > 0) {
-                        double scale = (double)available / currentTotal;
-                        QList<int> newSizes;
-                        int sum = 0;
-                        for (int i = 0; i < currentSizes.size(); ++i) {
-                            if (i == currentSizes.size() - 1) {
-                                newSizes << (available - sum);
-                            } else {
-                                int newSize = qRound(currentSizes[i] * scale);
-                                newSizes << newSize;
-                                sum += newSize;
-                            }
-                        }
-                        s->setSizes(newSizes);
-                    }
-                });
+                // Removed forced ratio application
             });
         }
     });
@@ -654,18 +628,15 @@ bool MainWindow::eventFilter(QObject *obj, QEvent *event)
     if (event->type() == QEvent::ParentChange || event->type() == QEvent::Show) {
         QDockWidget *dock = qobject_cast<QDockWidget*>(obj);
         if (dock && m_stickyPanes) {
-            QTimer::singleShot(50, this, &MainWindow::adjustLayoutAfterDockChange);
+            // QTimer::singleShot(50, this, &MainWindow::adjustLayoutAfterDockChange);
         }
     }
     
-    // Handle splitter resize events - apply magnets immediately
+    // Handle splitter resize events
     if (event->type() == QEvent::Resize) {
         QSplitter *splitter = qobject_cast<QSplitter*>(obj);
         if (splitter && m_stickyPanes) {
-            QTimer::singleShot(0, this, [this]() {
-                forceUpdateSplitters();
-                applySplitterRatios();
-            });
+            // Removed forced ratio application
         }
     }
 
@@ -724,44 +695,13 @@ void MainWindow::adjustLayoutAfterDockChange()
 void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
-    // Apply magnet behavior multiple times to catch all Qt layout updates
-    // This ensures no gaps remain after maximize/minimize/resize
-    QTimer::singleShot(0, this, [this]() {
-        forceUpdateSplitters();
-        applySplitterRatios();
-    });
-    QTimer::singleShot(50, this, [this]() {
-        forceUpdateSplitters();
-        applySplitterRatios();
-    });
-    QTimer::singleShot(150, this, [this]() {
-        forceUpdateSplitters();
-        applySplitterRatios();
-    });
+    // Removed forced splitter ratio application to allow user customization
 }
 
 void MainWindow::changeEvent(QEvent *event)
 {
     QMainWindow::changeEvent(event);
-    if (event->type() == QEvent::WindowStateChange) {
-        // Apply multiple times to catch all layout updates during state changes
-        QTimer::singleShot(0, this, [this]() {
-            forceUpdateSplitters();
-            applySplitterRatios();
-        });
-        QTimer::singleShot(100, this, [this]() {
-            forceUpdateSplitters();
-            applySplitterRatios();
-        });
-        QTimer::singleShot(200, this, [this]() {
-            forceUpdateSplitters();
-            applySplitterRatios();
-        });
-        QTimer::singleShot(300, this, [this]() {
-            forceUpdateSplitters();
-            applySplitterRatios();
-        });
-    }
+    // Removed forced splitter ratio application to allow user customization
 }
 
     

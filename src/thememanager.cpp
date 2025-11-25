@@ -8,6 +8,7 @@
 #include <QPalette>
 #include <QDir>
 #include <QFileInfo>
+#include <QSettings>
 
 ThemeManager& ThemeManager::instance()
 {
@@ -25,8 +26,13 @@ ThemeManager::ThemeManager()
     // Scan for available JSON themes
     scanJsonThemes();
     
-    // Set default theme to Dracula if it exists, otherwise use first available
-    if (jsonThemeNames.contains("Dracula")) {
+    // Load saved theme from settings
+    QSettings settings("Q", "Q");
+    QString savedTheme = settings.value("theme").toString();
+    
+    if (!savedTheme.isEmpty() && jsonThemeNames.contains(savedTheme)) {
+        currentThemeName = savedTheme;
+    } else if (jsonThemeNames.contains("Dracula")) {
         currentThemeName = "Dracula";
     } else if (!jsonThemeNames.isEmpty()) {
         currentThemeName = jsonThemeNames.first();
@@ -247,6 +253,10 @@ void ThemeManager::setCurrentTheme(const QString &name)
     if (!theme.name.isEmpty()) {
         currentThemeName = name;
         applyTheme(theme);
+        
+        // Save to settings
+        QSettings settings("Q", "Q");
+        settings.setValue("theme", name);
     }
 }
 
@@ -258,6 +268,10 @@ QString ThemeManager::toStyleSheet(const EditorTheme &theme) const
     // Main application colors
     stylesheet += QString(
         "QMainWindow, QWidget {"
+        "   background-color: %1;"
+        "   color: %2;"
+        "}"
+        "TerminalWidget {"
         "   background-color: %1;"
         "   color: %2;"
         "}"
