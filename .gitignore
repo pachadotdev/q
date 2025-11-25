@@ -1,0 +1,7 @@
+aur*
+bin
+build
+*.zip
+*.tar.gz
+*.tar.zst
+.vscode

@@ -1,0 +1,793 @@
+#include "mainwindow.h"
+#include "codeeditor.h"
+#include "filebrowser.h"
+#include "terminalwidget.h"
+#include "environmentpane.h"
+#include "thememanager.h"
+
+#include <QAction>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QInputDialog>
+#include <QSettings>
+#include <QTextStream>
+#include <QCloseEvent>
+#include <QPushButton>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QMenu>
+#include <QFileInfo>
+#include <QTimer>
+#include <QStandardPaths>
+#include <QApplication>
+#include <QDialog>
+#include <QLabel>
+#include <QListWidget>
+#include <QDialogButtonBox>
+
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent)
+    , console(nullptr)
+{
+    setWindowTitle("Q - Simple R IDE");
+    resize(1200, 800);
+    
+    // Create central widget (editor tabs)
+    editorTabs = new QTabWidget(this);
+    editorTabs->setTabsClosable(true);
+    editorTabs->setMovable(true);
+    setCentralWidget(editorTabs);
+    
+    // Add first editor tab
+    addNewEditorTab();
+    
+    // Create dock widgets
+    createDockWidgets();
+    
+    // Create menus and toolbars
+    createMenus();
+    createToolBars();
+    
+    // Setup connections
+    setupConnections();
+    
+    // Load settings
+    loadSettings();
+}
+
+MainWindow::~MainWindow()
+{
+    saveSettings();
+}
+
+void MainWindow::createMenus()
+{
+    // File menu
+    fileMenu = menuBar()->addMenu(tr("&File"));
+    
+    QAction *newAct = new QAction(tr("&New Script"), this);
+    newAct->setShortcut(QKeySequence::New);
+    connect(newAct, &QAction::triggered, this, &MainWindow::newFile);
+    fileMenu->addAction(newAct);
+    
+    QAction *openAct = new QAction(tr("&Open File..."), this);
+    openAct->setShortcut(QKeySequence::Open);
+    connect(openAct, &QAction::triggered, this, &MainWindow::openFile);
+    fileMenu->addAction(openAct);
+    
+    QAction *openDirAct = new QAction(tr("Open &Directory..."), this);
+    openDirAct->setShortcut(Qt::CTRL | Qt::SHIFT | Qt::Key_O);
+    connect(openDirAct, &QAction::triggered, this, &MainWindow::openDirectory);
+    fileMenu->addAction(openDirAct);
+    
+    fileMenu->addSeparator();
+    
+    QAction *createProjAct = new QAction(tr("Create &Project..."), this);
+    createProjAct->setShortcut(Qt::CTRL | Qt::SHIFT | Qt::Key_N);
+    connect(createProjAct, &QAction::triggered, this, &MainWindow::createProject);
+    fileMenu->addAction(createProjAct);
+    
+    fileMenu->addSeparator();
+    
+    QAction *saveAct = new QAction(tr("&Save"), this);
+    saveAct->setShortcut(QKeySequence::Save);
+    connect(saveAct, &QAction::triggered, this, &MainWindow::saveFile);
+    fileMenu->addAction(saveAct);
+    
+    QAction *saveAsAct = new QAction(tr("Save &As..."), this);
+    saveAsAct->setShortcut(QKeySequence::SaveAs);
+    connect(saveAsAct, &QAction::triggered, this, &MainWindow::saveFileAs);
+    fileMenu->addAction(saveAsAct);
+    
+    fileMenu->addSeparator();
+    
+    QAction *quitAct = new QAction(tr("&Quit"), this);
+    quitAct->setShortcut(QKeySequence::Quit);
+    connect(quitAct, &QAction::triggered, this, &QWidget::close);
+    fileMenu->addAction(quitAct);
+    
+    // Edit menu
+    editMenu = menuBar()->addMenu(tr("&Edit"));
+    
+    // Code menu
+    codeMenu = menuBar()->addMenu(tr("&Code"));
+    
+    QAction *runLineAct = new QAction(tr("Run Line/Selection"), this);
+    runLineAct->setShortcut(Qt::CTRL | Qt::Key_Return);
+    connect(runLineAct, &QAction::triggered, this, &MainWindow::runCurrentLine);
+    codeMenu->addAction(runLineAct);
+    
+    QAction *runSelAct = new QAction(tr("Run Selection Only"), this);
+    runSelAct->setShortcut(Qt::CTRL | Qt::SHIFT | Qt::Key_Return);
+    connect(runSelAct, &QAction::triggered, this, &MainWindow::runSelection);
+    codeMenu->addAction(runSelAct);
+    
+    QAction *runAllAct = new QAction(tr("Run All"), this);
+    runAllAct->setShortcut(Qt::CTRL | Qt::SHIFT | Qt::Key_A);
+    connect(runAllAct, &QAction::triggered, this, &MainWindow::runAll);
+    codeMenu->addAction(runAllAct);
+    
+    codeMenu->addSeparator();
+    
+    QAction *sourceAct = new QAction(tr("Source File"), this);
+    sourceAct->setShortcut(Qt::CTRL | Qt::SHIFT | Qt::Key_S);
+    connect(sourceAct, &QAction::triggered, this, &MainWindow::sourceFile);
+    codeMenu->addAction(sourceAct);
+    
+    codeMenu->addSeparator();
+    
+    QAction *pipeAct = new QAction(tr("Insert Native Pipe |>"), this);
+    pipeAct->setShortcut(Qt::CTRL | Qt::SHIFT | Qt::Key_M);
+    connect(pipeAct, &QAction::triggered, this, [this]() {
+        CodeEditor *editor = getCurrentEditor();
+        if (editor) {
+            editor->textCursor().insertText(" |> ");
+        }
+    });
+    codeMenu->addAction(pipeAct);
+    
+    QAction *clearConsoleAct = new QAction(tr("Clear Console"), this);
+    clearConsoleAct->setShortcut(Qt::CTRL | Qt::Key_L);
+    connect(clearConsoleAct, &QAction::triggered, this, [this]() {
+        if (console) {
+            console->clear();
+        }
+    });
+    codeMenu->addAction(clearConsoleAct);
+    
+    // View menu
+    viewMenu = menuBar()->addMenu(tr("&View"));
+    viewMenu->addAction(consoleDock->toggleViewAction());
+    viewMenu->addAction(filesDock->toggleViewAction());
+    
+    viewMenu->addSeparator();
+    
+    QAction *themeAct = new QAction(tr("Change &Theme..."), this);
+    themeAct->setShortcut(Qt::CTRL | Qt::Key_T);
+    connect(themeAct, &QAction::triggered, this, &MainWindow::changeTheme);
+    viewMenu->addAction(themeAct);
+    
+    // Help menu
+    helpMenu = menuBar()->addMenu(tr("&Help"));
+    QAction *aboutAct = new QAction(tr("&About"), this);
+    connect(aboutAct, &QAction::triggered, this, &MainWindow::about);
+    helpMenu->addAction(aboutAct);
+}
+
+void MainWindow::createToolBars()
+{
+    mainToolBar = addToolBar(tr("Main"));
+    mainToolBar->setObjectName("mainToolBar");
+    mainToolBar->setMovable(false);
+}
+
+void MainWindow::createDockWidgets()
+{
+    // Console dock with tabs
+    consoleDock = new QDockWidget(tr("Console / Terminals"), this);
+    consoleDock->setObjectName("consoleDock");
+    
+    // Create widget to hold tabs and button
+    QWidget *consoleWidget = new QWidget(this);
+    QVBoxLayout *consoleLayout = new QVBoxLayout(consoleWidget);
+    consoleLayout->setContentsMargins(0, 0, 0, 0);
+    consoleLayout->setSpacing(0);
+    
+    // Create tab widget for consoles/terminals
+    consoleTabs = new QTabWidget(this);
+    consoleTabs->setTabsClosable(true);
+    consoleTabs->setMovable(true);
+    
+    // Create toolbar with dropdown for adding terminals
+    QWidget *toolbarWidget = new QWidget(this);
+    QHBoxLayout *toolbarLayout = new QHBoxLayout(toolbarWidget);
+    toolbarLayout->setContentsMargins(2, 2, 2, 2);
+    
+    // Create dropdown button for terminal selection
+    QPushButton *terminalMenuButton = new QPushButton(tr("+ Terminal"), this);
+    terminalMenuButton->setMaximumWidth(100);
+    
+    QMenu *terminalMenu = new QMenu(this);
+    
+    // Add shell options to menu
+    QStringList shellPaths = {"/bin/bash", "/usr/bin/bash", 
+                               "/bin/zsh", "/usr/bin/zsh",
+                               "/bin/sh", "/usr/bin/sh"};
+    QStringList addedShells;
+    
+    for (const QString &shellPath : shellPaths) {
+        if (QFile::exists(shellPath)) {
+            QString shellName = QFileInfo(shellPath).fileName();
+            if (!addedShells.contains(shellName)) {
+                QAction *shellAction = terminalMenu->addAction(shellName);
+                connect(shellAction, &QAction::triggered, this, [this, shellPath]() {
+                    TerminalWidget *terminal = new TerminalWidget(shellPath, this);
+                    int index = consoleTabs->addTab(terminal, QFileInfo(shellPath).fileName());
+                    consoleTabs->setCurrentIndex(index);
+                });
+                addedShells << shellName;
+            }
+        }
+    }
+    
+    terminalMenuButton->setMenu(terminalMenu);
+    
+    toolbarLayout->addWidget(terminalMenuButton);
+    toolbarLayout->addStretch();
+    
+    consoleLayout->addWidget(toolbarWidget);
+    consoleLayout->addWidget(consoleTabs);
+    
+    consoleDock->setWidget(consoleWidget);
+    addDockWidget(Qt::BottomDockWidgetArea, consoleDock);
+    
+    // Add R console as first tab
+    console = new TerminalWidget("R", this);
+    consoleTabs->addTab(console, "R Console");
+    
+    // Handle tab close
+    connect(consoleTabs, &QTabWidget::tabCloseRequested, this, [this](int index) {
+        // Don't allow closing the R console (index 0)
+        if (index > 0) {
+            QWidget *widget = consoleTabs->widget(index);
+            consoleTabs->removeTab(index);
+            delete widget;
+        }
+    });
+    
+    // Files dock
+    filesDock = new QDockWidget(tr("Files"), this);
+    filesDock->setObjectName("filesDock");
+    fileBrowser = new FileBrowser(this);
+    filesDock->setWidget(fileBrowser);
+    addDockWidget(Qt::RightDockWidgetArea, filesDock);
+
+    // Environment dock
+    envDock = new QDockWidget(tr("Environment"), this);
+    envDock->setObjectName("envDock");
+    envPane = new EnvironmentPane(console, this);
+    envDock->setWidget(envPane);
+    addDockWidget(Qt::RightDockWidgetArea, envDock);
+    tabifyDockWidget(filesDock, envDock);
+}
+
+void MainWindow::setupConnections()
+{
+    // Tab close button
+    connect(editorTabs, &QTabWidget::tabCloseRequested, this, [this](int index) {
+        QWidget *widget = editorTabs->widget(index);
+        editorTabs->removeTab(index);
+        delete widget;
+        
+        // Add new tab if all closed
+        if (editorTabs->count() == 0) {
+            addNewEditorTab();
+        }
+    });
+    
+    // File browser double-click to open
+    connect(fileBrowser, &FileBrowser::fileDoubleClicked, this, [this](const QString &path) {
+        QFileInfo fileInfo(path);
+        QString suffix = fileInfo.suffix().toLower();
+        
+        // Check if it's a supported file type
+        QStringList supportedTypes = {"r", "rmd", "qmd", "h", "c", "hpp", "cpp", "rproject"};
+        
+        if (supportedTypes.contains(suffix)) {
+            // Special handling for .rproject files
+            if (suffix == "rproject") {
+                QString projectDir = fileInfo.absolutePath();
+                
+                // Set file browser to project directory
+                fileBrowser->setRootPath(projectDir);
+                
+                // Set R working directory
+                if (console) {
+                    QString rCommand = QString("setwd('%1')").arg(projectDir.replace('\\', '/'));
+                    console->executeCommand(rCommand);
+                    statusBar()->showMessage(tr("Opened project: %1").arg(fileInfo.fileName()), 5000);
+                }
+            }
+            
+            // Open the file
+            QFile file(path);
+            if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+                QTextStream in(&file);
+                QString content = in.readAll();
+                file.close();
+                
+                addNewEditorTab(fileInfo.fileName());
+                CodeEditor *editor = getCurrentEditor();
+                if (editor) {
+                    editor->setPlainText(content);
+                    editor->setProperty("filePath", path);
+                }
+            }
+        }
+    });
+}
+
+void MainWindow::loadSettings()
+{
+    QSettings settings("Q", "Q");
+    restoreGeometry(settings.value("geometry").toByteArray());
+    
+    if (!restoreState(settings.value("windowState").toByteArray())) {
+        // First run defaults:
+        // Ensure console is docked at the bottom and visible
+        addDockWidget(Qt::BottomDockWidgetArea, consoleDock);
+        consoleDock->setVisible(true);
+        consoleDock->setFloating(false);
+        
+        // Ensure sidebars are on the right
+        addDockWidget(Qt::RightDockWidgetArea, filesDock);
+        addDockWidget(Qt::RightDockWidgetArea, envDock);
+        tabifyDockWidget(filesDock, envDock);
+        filesDock->setVisible(true);
+        envDock->setVisible(true);
+        envDock->raise(); // Show environment by default
+    }
+}
+
+void MainWindow::saveSettings()
+{
+    QSettings settings("Q", "Q");
+    settings.setValue("geometry", saveGeometry());
+    settings.setValue("windowState", saveState());
+}
+
+void MainWindow::about()
+{
+    QMessageBox::about(this, "About Q",
+                      "Q - Simple R IDE\n\n"
+                      "A Qt-based IDE for R programming.");
+}
+
+CodeEditor* MainWindow::getCurrentEditor()
+{
+    if (editorTabs->count() == 0) {
+        return nullptr;
+    }
+    return qobject_cast<CodeEditor*>(editorTabs->currentWidget());
+}
+
+void MainWindow::addNewEditorTab(const QString &title)
+{
+    CodeEditor *editor = new CodeEditor(this);
+    int index = editorTabs->addTab(editor, title);
+    editorTabs->setCurrentIndex(index);
+}
+
+void MainWindow::newFile()
+{
+    addNewEditorTab("Untitled");
+}
+
+void MainWindow::openFile()
+{
+    QString fileName = QFileDialog::getOpenFileName(this,
+        tr("Open File"), "", 
+        tr("All Supported Files (*.r *.R *.rmd *.Rmd *.qmd *.Qmd *.rproject *.h *.c *.cpp *.hpp);;"
+           "R Files (*.R *.r *.Rmd *.rmd *.Qmd *.qmd);;"
+           "C++ Files (*.cpp *.hpp *.h *.c);;"
+           "R Projects (*.rproject);;"
+           "All Files (*)"));
+    
+    if (!fileName.isEmpty()) {
+        QFileInfo fileInfo(fileName);
+        QString suffix = fileInfo.suffix().toLower();
+        
+        // Special handling for .rproject files
+        if (suffix == "rproject") {
+            QString projectDir = fileInfo.absolutePath();
+            
+            // Set file browser to project directory
+            fileBrowser->setRootPath(projectDir);
+            
+            // Set R working directory
+            if (console) {
+                QString rCommand = QString("setwd('%1')").arg(projectDir.replace('\\', '/'));
+                console->executeCommand(rCommand);
+                statusBar()->showMessage(tr("Opened project: %1").arg(fileInfo.fileName()), 5000);
+            }
+        }
+        
+        QFile file(fileName);
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&file);
+            QString content = in.readAll();
+            file.close();
+            
+            addNewEditorTab(fileInfo.fileName());
+            CodeEditor *editor = getCurrentEditor();
+            if (editor) {
+                editor->setPlainText(content);
+                editor->setProperty("filePath", fileName);
+            }
+        }
+    }
+}
+
+void MainWindow::openDirectory()
+{
+    QString dirPath = QFileDialog::getExistingDirectory(this,
+        tr("Open Directory"), QDir::homePath(),
+        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+    
+    if (!dirPath.isEmpty()) {
+        // Set file browser to this directory
+        fileBrowser->setRootPath(dirPath);
+        
+        // Set R working directory
+        if (console) {
+            QString rCommand = QString("setwd('%1')").arg(dirPath.replace('\\', '/'));
+            console->executeCommand(rCommand);
+            statusBar()->showMessage(tr("Working directory: %1").arg(dirPath), 5000);
+        }
+    }
+}
+
+void MainWindow::createProject()
+{
+    QString dirPath = QFileDialog::getExistingDirectory(this,
+        tr("Select Project Directory"), QDir::homePath(),
+        QFileDialog::ShowDirsOnly | QFileDialog::DontResolveSymlinks);
+    
+    if (dirPath.isEmpty()) {
+        return;
+    }
+    
+    // Ask for project name
+    bool ok;
+    QString projectName = QInputDialog::getText(this, tr("Create Project"),
+        tr("Project name:"), QLineEdit::Normal,
+        QFileInfo(dirPath).fileName(), &ok);
+    
+    if (!ok || projectName.isEmpty()) {
+        return;
+    }
+    
+    // Create .rproject file
+    QString rProjPath = QDir(dirPath).filePath(projectName + ".rproject");
+    
+    if (QFile::exists(rProjPath)) {
+        QMessageBox::StandardButton reply = QMessageBox::question(this,
+            tr("Project Exists"),
+            tr("A project file already exists. Overwrite?"),
+            QMessageBox::Yes | QMessageBox::No);
+        
+        if (reply != QMessageBox::Yes) {
+            return;
+        }
+    }
+    
+    // Write .Rproj file with default settings
+    QFile file(rProjPath);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << "Version: 1.0\n\n";
+        out << "RestoreWorkspace: No\n";
+        out << "SaveWorkspace: No\n";
+        out << "AlwaysSaveHistory: Yes\n\n";
+        out << "EnableCodeIndexing: Yes\n";
+        out << "UseSpacesForTab: Yes\n";
+        out << "NumSpacesForTab: 2\n";
+        out << "Encoding: UTF-8\n\n";
+        out << "RnwWeave: Sweave\n";
+        out << "LaTeX: pdfLaTeX\n";
+        file.close();
+        
+        // Open the directory and set working directory
+        fileBrowser->setRootPath(dirPath);
+        
+        if (console) {
+            QString rCommand = QString("setwd('%1')").arg(dirPath.replace('\\', '/'));
+            console->executeCommand(rCommand);
+        }
+        
+        QMessageBox::information(this, tr("Project Created"),
+            tr("Project created successfully:\n%1").arg(rProjPath));
+        
+        statusBar()->showMessage(tr("Project created: %1").arg(projectName), 5000);
+    } else {
+        QMessageBox::warning(this, tr("Error"),
+            tr("Could not create project file:\n%1").arg(rProjPath));
+    }
+}
+
+void MainWindow::saveFile()
+{
+    CodeEditor *editor = getCurrentEditor();
+    if (!editor) return;
+    
+    QString filePath = editor->property("filePath").toString();
+    if (filePath.isEmpty()) {
+        saveFileAs();
+        return;
+    }
+    
+    QFile file(filePath);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QTextStream out(&file);
+        out << editor->toPlainText();
+        file.close();
+        statusBar()->showMessage(tr("File saved: %1").arg(filePath), 3000);
+    }
+}
+
+void MainWindow::saveFileAs()
+{
+    CodeEditor *editor = getCurrentEditor();
+    if (!editor) return;
+    
+    // Get current file path to determine default extension
+    QString currentPath = editor->property("filePath").toString();
+    QString defaultFilter = "R Scripts (*.r *.R)";
+    QString selectedFilter;
+    
+    QString fileName = QFileDialog::getSaveFileName(this,
+        tr("Save File"), currentPath.isEmpty() ? "untitled.r" : currentPath,
+        tr("R Scripts (*.r *.R);;"
+           "R Markdown (*.Rmd *.rmd);;"
+           "Quarto (*.Qmd *.qmd);;"
+           "C++ Files (*.cpp *.hpp *.h *.c);;"
+           "All Files (*)"),
+        &selectedFilter);
+    
+    if (!fileName.isEmpty()) {
+        // Auto-append extension if no extension provided
+        QFileInfo fileInfo(fileName);
+        if (fileInfo.suffix().isEmpty()) {
+            // Determine extension based on selected filter
+            if (selectedFilter.contains("R Markdown")) {
+                fileName += ".Rmd";
+            } else if (selectedFilter.contains("Quarto")) {
+                fileName += ".Qmd";
+            } else if (selectedFilter.contains("C++")) {
+                fileName += ".cpp";
+            } else {
+                // Default to .r for R scripts
+                fileName += ".r";
+            }
+        }
+        // Don't add extension if file already has proper one
+        else if (fileInfo.suffix().toLower() == "r" || 
+                 fileInfo.suffix().toLower() == "rmd" ||
+                 fileInfo.suffix().toLower() == "qmd" ||
+                 fileInfo.suffix() == "cpp" ||
+                 fileInfo.suffix() == "hpp" ||
+                 fileInfo.suffix() == "h" ||
+                 fileInfo.suffix() == "c") {
+            // Keep the existing extension as-is
+        }
+        
+        QFile file(fileName);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream out(&file);
+            out << editor->toPlainText();
+            file.close();
+            
+            editor->setProperty("filePath", fileName);
+            editorTabs->setTabText(editorTabs->currentIndex(), QFileInfo(fileName).fileName());
+            statusBar()->showMessage(tr("File saved: %1").arg(fileName), 3000);
+        }
+    }
+}
+
+void MainWindow::runCurrentLine()
+{
+    CodeEditor *editor = getCurrentEditor();
+    if (!editor || !console) return;
+    
+    // Check if there's a selection first
+    QString selection = editor->textCursor().selectedText();
+    if (!selection.isEmpty()) {
+        // If there's a selection, run it
+        selection.replace(QChar(0x2029), '\n');
+        console->executeCommand(selection);
+        return;
+    }
+    
+    // Otherwise, run the current line
+    QTextCursor cursor = editor->textCursor();
+    cursor.select(QTextCursor::LineUnderCursor);
+    QString line = cursor.selectedText();
+    
+    if (!line.trimmed().isEmpty()) {
+        console->executeCommand(line);
+    }
+}
+
+void MainWindow::runSelection()
+{
+    CodeEditor *editor = getCurrentEditor();
+    if (!editor || !console) return;
+    
+    QString selection = editor->textCursor().selectedText();
+    if (!selection.isEmpty()) {
+        // Qt uses Unicode paragraph separator, replace with newline
+        selection.replace(QChar(0x2029), '\n');
+        console->executeCommand(selection);
+    }
+}
+
+void MainWindow::runAll()
+{
+    CodeEditor *editor = getCurrentEditor();
+    if (!editor || !console) return;
+    
+    QString code = editor->toPlainText();
+    if (!code.isEmpty()) {
+        console->executeCommand(code);
+    }
+}
+
+void MainWindow::sourceFile()
+{
+    CodeEditor *editor = getCurrentEditor();
+    if (!editor || !console) return;
+    
+    QString filePath = editor->property("filePath").toString();
+    if (filePath.isEmpty()) {
+        QMessageBox::warning(this, tr("Source File"),
+            tr("Please save the file before sourcing."));
+        return;
+    }
+    
+    // Use forward slashes for R
+    filePath.replace('\\', '/');
+    QString command = QString("source('%1')").arg(filePath);
+    console->executeCommand(command);
+}
+
+void MainWindow::changeTheme()
+{
+    ThemeManager &themeMgr = ThemeManager::instance();
+    QStringList themes = themeMgr.availableThemes();
+    
+    // Create a dialog with theme selection, search bar, and attribution
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Select Theme"));
+    dialog.setMinimumWidth(500);
+    dialog.setMinimumHeight(600);
+    
+    QVBoxLayout *layout = new QVBoxLayout(&dialog);
+    
+    // Add info label with attribution
+    QLabel *infoLabel = new QLabel(&dialog);
+    infoLabel->setOpenExternalLinks(true);
+    infoLabel->setTextFormat(Qt::RichText);
+    infoLabel->setText(
+        tr("Choose from <b>%1 themes</b><br>"
+           "<small>Themes from: <a href='https://github.com/Gogh-Co/Gogh'>Gogh Project</a></small>")
+        .arg(themes.count()));
+    layout->addWidget(infoLabel);
+    
+    // Add search bar
+    QLineEdit *searchBox = new QLineEdit(&dialog);
+    searchBox->setPlaceholderText(tr("Search themes..."));
+    searchBox->setClearButtonEnabled(true);
+    layout->addWidget(searchBox);
+    
+    // Theme list
+    QListWidget *themeList = new QListWidget(&dialog);
+    themeList->addItems(themes);
+    
+    // Select current theme
+    int currentIndex = themes.indexOf(themeMgr.currentTheme().name);
+    if (currentIndex >= 0) {
+        themeList->setCurrentRow(currentIndex);
+        themeList->scrollToItem(themeList->item(currentIndex));
+    }
+    
+    layout->addWidget(themeList);
+    
+    // Connect search box to filter themes
+    connect(searchBox, &QLineEdit::textChanged, [themeList, themes](const QString &text) {
+        QString searchText = text.toLower();
+        
+        for (int i = 0; i < themeList->count(); ++i) {
+            QListWidgetItem *item = themeList->item(i);
+            if (item) {
+                QString themeName = item->text().toLower();
+                // Show items that contain the search text
+                bool matches = themeName.contains(searchText);
+                item->setHidden(!matches);
+            }
+        }
+        
+        // Select first visible item if current is hidden
+        if (themeList->currentItem() && themeList->currentItem()->isHidden()) {
+            for (int i = 0; i < themeList->count(); ++i) {
+                QListWidgetItem *item = themeList->item(i);
+                if (item && !item->isHidden()) {
+                    themeList->setCurrentItem(item);
+                    break;
+                }
+            }
+        }
+    });
+    
+    // Buttons
+    QDialogButtonBox *buttonBox = new QDialogButtonBox(
+        QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    layout->addWidget(buttonBox);
+    
+    // Handle double-click to apply immediately
+    connect(themeList, &QListWidget::itemDoubleClicked, &dialog, &QDialog::accept);
+    
+    // Focus search box initially
+    searchBox->setFocus();
+    
+    if (dialog.exec() == QDialog::Accepted && themeList->currentItem()) {
+        QString selectedTheme = themeList->currentItem()->text();
+        
+        qDebug() << "Applying theme:" << selectedTheme;
+        
+        themeMgr.setCurrentTheme(selectedTheme);
+        EditorTheme theme = themeMgr.currentTheme();
+        
+        // Validate theme before applying
+        if (theme.name.isEmpty() || !theme.background.isValid() || !theme.foreground.isValid()) {
+            qWarning() << "Invalid theme loaded, skipping application";
+            QMessageBox::warning(this, tr("Theme Error"),
+                tr("Failed to load theme: %1\nPlease try another theme.").arg(selectedTheme));
+            return;
+        }
+        
+        // Apply global stylesheet to the entire application
+        QString stylesheet = themeMgr.toStyleSheet(theme);
+        qApp->setStyleSheet(stylesheet);
+        
+        // Apply to all editor tabs
+        for (int i = 0; i < editorTabs->count(); ++i) {
+            CodeEditor *editor = qobject_cast<CodeEditor*>(editorTabs->widget(i));
+            if (editor) {
+                editor->setTheme(theme);
+            }
+        }
+        
+        // Apply to console (if it exists)
+        if (console) {
+            console->setTheme(theme);
+        }
+        
+        // Apply to all terminal tabs
+        for (int i = 0; i < consoleTabs->count(); ++i) {
+            TerminalWidget *terminal = qobject_cast<TerminalWidget*>(consoleTabs->widget(i));
+            if (terminal) {
+                terminal->setTheme(theme);
+            }
+        }
+        
+        qDebug() << "Theme applied successfully:" << selectedTheme;
+    }
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    saveSettings();
+    event->accept();
+}
