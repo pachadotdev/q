@@ -20,8 +20,6 @@ ThemeManager::ThemeManager()
     : currentThemeName("Dracula")
 {
     themesDir = findThemesDirectory();
-    // Don't initialize built-in themes, only use Gogh JSON themes
-    // initializeThemes();
     
     // Scan for available JSON themes
     scanJsonThemes();
@@ -42,111 +40,6 @@ ThemeManager::ThemeManager()
     if (!initial.name.isEmpty()) {
         applyTheme(initial);
     }
-}
-
-void ThemeManager::initializeThemes()
-{
-    // Light theme (default)
-    EditorTheme light;
-    light.name = "Light";
-    light.background = QColor(255, 255, 255);
-    light.foreground = QColor(0, 0, 0);
-    light.selection = QColor(173, 214, 255);
-    light.lineHighlight = QColor(245, 245, 245);
-    light.lineNumber = QColor(128, 128, 128);
-    light.lineNumberBg = QColor(240, 240, 240);
-    light.keyword = QColor(0, 0, 255);
-    light.function = QColor(0, 102, 153);
-    light.string = QColor(0, 153, 0);
-    light.number = QColor(200, 0, 200);
-    light.comment = QColor(0, 128, 0);
-    light.operator_ = QColor(139, 0, 0);
-    themes["Light"] = light;
-    
-    // Dracula (popular dark theme)
-    EditorTheme dracula;
-    dracula.name = "Dracula";
-    dracula.background = QColor("#282a36");
-    dracula.foreground = QColor("#f8f8f2");
-    dracula.selection = QColor("#44475a");
-    dracula.lineHighlight = QColor("#44475a");
-    dracula.lineNumber = QColor("#6272a4");
-    dracula.lineNumberBg = QColor("#21222c");
-    dracula.keyword = QColor("#ff79c6");
-    dracula.function = QColor("#50fa7b");
-    dracula.string = QColor("#f1fa8c");
-    dracula.number = QColor("#bd93f9");
-    dracula.comment = QColor("#6272a4");
-    dracula.operator_ = QColor("#ff79c6");
-    themes["Dracula"] = dracula;
-    
-    // Monokai
-    EditorTheme monokai;
-    monokai.name = "Monokai";
-    monokai.background = QColor("#272822");
-    monokai.foreground = QColor("#f8f8f2");
-    monokai.selection = QColor("#49483e");
-    monokai.lineHighlight = QColor("#3e3d32");
-    monokai.lineNumber = QColor("#90908a");
-    monokai.lineNumberBg = QColor("#232321");
-    monokai.keyword = QColor("#f92672");
-    monokai.function = QColor("#a6e22e");
-    monokai.string = QColor("#e6db74");
-    monokai.number = QColor("#ae81ff");
-    monokai.comment = QColor("#75715e");
-    monokai.operator_ = QColor("#f92672");
-    themes["Monokai"] = monokai;
-    
-    // Solarized Dark
-    EditorTheme solarizedDark;
-    solarizedDark.name = "Solarized Dark";
-    solarizedDark.background = QColor("#002b36");
-    solarizedDark.foreground = QColor("#839496");
-    solarizedDark.selection = QColor("#073642");
-    solarizedDark.lineHighlight = QColor("#073642");
-    solarizedDark.lineNumber = QColor("#586e75");
-    solarizedDark.lineNumberBg = QColor("#002b36");
-    solarizedDark.keyword = QColor("#268bd2");
-    solarizedDark.function = QColor("#2aa198");
-    solarizedDark.string = QColor("#859900");
-    solarizedDark.number = QColor("#d33682");
-    solarizedDark.comment = QColor("#586e75");
-    solarizedDark.operator_ = QColor("#cb4b16");
-    themes["Solarized Dark"] = solarizedDark;
-    
-    // Nord
-    EditorTheme nord;
-    nord.name = "Nord";
-    nord.background = QColor("#2e3440");
-    nord.foreground = QColor("#d8dee9");
-    nord.selection = QColor("#434c5e");
-    nord.lineHighlight = QColor("#3b4252");
-    nord.lineNumber = QColor("#4c566a");
-    nord.lineNumberBg = QColor("#2e3440");
-    nord.keyword = QColor("#81a1c1");
-    nord.function = QColor("#88c0d0");
-    nord.string = QColor("#a3be8c");
-    nord.number = QColor("#b48ead");
-    nord.comment = QColor("#616e88");
-    nord.operator_ = QColor("#81a1c1");
-    themes["Nord"] = nord;
-    
-    // Gruvbox Dark
-    EditorTheme gruvbox;
-    gruvbox.name = "Gruvbox Dark";
-    gruvbox.background = QColor("#282828");
-    gruvbox.foreground = QColor("#ebdbb2");
-    gruvbox.selection = QColor("#504945");
-    gruvbox.lineHighlight = QColor("#3c3836");
-    gruvbox.lineNumber = QColor("#928374");
-    gruvbox.lineNumberBg = QColor("#1d2021");
-    gruvbox.keyword = QColor("#fb4934");
-    gruvbox.function = QColor("#b8bb26");
-    gruvbox.string = QColor("#b8bb26");
-    gruvbox.number = QColor("#d3869b");
-    gruvbox.comment = QColor("#928374");
-    gruvbox.operator_ = QColor("#fe8019");
-    themes["Gruvbox Dark"] = gruvbox;
 }
 
 QString ThemeManager::findThemesDirectory() const
@@ -194,12 +87,10 @@ void ThemeManager::scanJsonThemes()
     }
     
     jsonThemeNames.sort(Qt::CaseInsensitive);
-    // qDebug() << "Found" << jsonThemeNames.size() << "JSON themes";
 }
 
 QStringList ThemeManager::availableThemes() const
 {
-    // Only return Gogh JSON themes, no built-in themes
     QStringList allThemes = jsonThemeNames;
     allThemes.sort(Qt::CaseInsensitive);
     return allThemes;

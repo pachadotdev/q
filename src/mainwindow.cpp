@@ -124,9 +124,6 @@ void MainWindow::createMenus()
     connect(quitAct, &QAction::triggered, this, &QWidget::close);
     fileMenu->addAction(quitAct);
     
-    // Edit menu
-    editMenu = menuBar()->addMenu(tr("&Edit"));
-    
     // Code menu
     codeMenu = menuBar()->addMenu(tr("&Code"));
     
@@ -202,8 +199,6 @@ void MainWindow::createMenus()
     connect(aboutAct, &QAction::triggered, this, &MainWindow::about);
     helpMenu->addAction(aboutAct);
 }
-
-// Note: toolbar creation removed to avoid confusing/unused toolbar UI.
 
 void MainWindow::createDockWidgets()
 {
@@ -463,258 +458,13 @@ void MainWindow::setDefaultLayoutSizes()
         for (QSplitter *s : splitters) {
             if (s) s->installEventFilter(this);
         }
-        
-        // Connect to dock visibility changes to trigger layout adjustment
-        /*
-        connect(scriptDock, &QDockWidget::topLevelChanged, this, [this](bool floating) {
-            if (!floating) {
-                QTimer::singleShot(100, this, &MainWindow::adjustLayoutAfterDockChange);
-            }
-        });
-        connect(consoleDock, &QDockWidget::topLevelChanged, this, [this](bool floating) {
-            if (!floating) {
-                QTimer::singleShot(100, this, &MainWindow::adjustLayoutAfterDockChange);
-            }
-        });
-        connect(filesDock, &QDockWidget::topLevelChanged, this, [this](bool floating) {
-            if (!floating) {
-                QTimer::singleShot(100, this, &MainWindow::adjustLayoutAfterDockChange);
-            }
-        });
-        connect(envDock, &QDockWidget::topLevelChanged, this, [this](bool floating) {
-            if (!floating) {
-                QTimer::singleShot(100, this, &MainWindow::adjustLayoutAfterDockChange);
-            }
-        });
-        */
-        
-        // Track splitter movements
-        for (QSplitter *s : splitters) {
-            if (!s) continue;
-            connect(s, &QSplitter::splitterMoved, this, [this, s](int pos, int index) {
-                Q_UNUSED(pos);
-                Q_UNUSED(index);
-                // Removed forced ratio application
-            });
-        }
     });
-}
-
-void MainWindow::applySplitterRatios()
-{
-    // Apply fixed ratios and ensure splitters fill 100% of available space.
-    // Magnet behavior: always fill gaps, maintain proportions
-    // Left/right: 75% / 25%
-    // Top/bottom (left column): 60% / 40%
-    // Right column: 100% height (handled by tabified docks)
-    
-    QList<QSplitter*> splitters = this->findChildren<QSplitter*>();
-    
-    // Process all splitters to ensure they fill available space
-    for (QSplitter *s : splitters) {
-        if (!s || !s->isVisible() || s->count() < 2) continue;
-        
-        QList<int> currentSizes = s->sizes();
-        if (currentSizes.isEmpty()) continue;
-        
-        // Calculate total available space
-        int available = (s->orientation() == Qt::Horizontal) ? s->width() : s->height();
-        int currentTotal = 0;
-        for (int size : currentSizes) {
-            currentTotal += size;
-        }
-        
-        // If there's a gap (currentTotal < available), redistribute to fill
-        if (currentTotal < available && currentTotal > 0) {
-            double scale = (double)available / currentTotal;
-            QList<int> newSizes;
-            int sum = 0;
-            for (int i = 0; i < currentSizes.size(); ++i) {
-                if (i == currentSizes.size() - 1) {
-                    // Last widget gets remainder to ensure exact total
-                    newSizes << (available - sum);
-                } else {
-                    int newSize = qRound(currentSizes[i] * scale);
-                    newSizes << newSize;
-                    sum += newSize;
-                }
-            }
-            s->setSizes(newSizes);
-        }
-    }
-    
-    // Now apply desired ratios to main splitters
-    QSplitter *mainH = nullptr;
-    QSplitter *leftV = nullptr;
-
-    int bestH = 0;
-    int bestV = 0;
-    for (QSplitter *s : splitters) {
-        if (!s || !s->isVisible()) continue;
-        if (s->orientation() == Qt::Horizontal) {
-            int w = s->width();
-            if (w > bestH) { bestH = w; mainH = s; }
-        } else {
-            int h = s->height();
-            if (h > bestV) { bestV = h; leftV = s; }
-        }
-    }
-
-    // Apply horizontal split: left 75%, right 25%
-    if (mainH && mainH->count() >= 2) {
-        int total = mainH->width();
-        if (total > 100) {
-            QList<int> currentSizes = mainH->sizes();
-            
-            // Apply if both widgets are visible
-            if (currentSizes.size() >= 2 && currentSizes[0] > 0 && currentSizes[1] > 0) {
-                int left = (total * 3) / 4;
-                int right = total - left;  // Exact remainder, no gaps
-                QList<int> sizes;
-                sizes << left << right;
-                mainH->setSizes(sizes);
-            }
-        }
-    }
-
-    // Apply vertical split in left column: top 60%, bottom 40%
-    if (leftV && leftV->count() >= 2) {
-        int total = leftV->height();
-        if (total > 100) {
-            QList<int> currentSizes = leftV->sizes();
-            
-            // Apply if both widgets are visible
-            if (currentSizes.size() >= 2 && currentSizes[0] > 0 && currentSizes[1] > 0) {
-                int top = (total * 60) / 100;
-                int bottom = total - top;  // Exact remainder, no gaps
-                QList<int> vsizes;
-                vsizes << top << bottom;
-                leftV->setSizes(vsizes);
-            }
-        }
-    }
-}
-
-void MainWindow::forceUpdateSplitters()
-{
-    // Force all splitters to refresh and fill available space
-    QList<QSplitter*> splitters = this->findChildren<QSplitter*>();
-    
-    for (QSplitter *s : splitters) {
-        if (!s || !s->isVisible() || s->count() < 2) continue;
-        
-        QList<int> sizes = s->sizes();
-        if (sizes.isEmpty()) continue;
-        
-        // Get actual available space
-        int available = (s->orientation() == Qt::Horizontal) ? s->width() : s->height();
-        int total = 0;
-        for (int size : sizes) {
-            total += size;
-        }
-        
-        // If there's any discrepancy, force a redistribution
-        if (total != available && available > 0 && total > 0) {
-            // Redistribute proportionally
-            QList<int> newSizes;
-            int sum = 0;
-            for (int i = 0; i < sizes.size(); ++i) {
-                if (i == sizes.size() - 1) {
-                    newSizes << (available - sum);
-                } else {
-                    int newSize = (sizes[i] * available) / total;
-                    newSizes << newSize;
-                    sum += newSize;
-                }
-            }
-            s->setSizes(newSizes);
-        }
-    }
-}
-
-bool MainWindow::eventFilter(QObject *obj, QEvent *event)
-{
-    // Handle dock widget changes for magnet behavior
-    if (event->type() == QEvent::ParentChange || event->type() == QEvent::Show) {
-        QDockWidget *dock = qobject_cast<QDockWidget*>(obj);
-        if (dock && m_stickyPanes) {
-            // QTimer::singleShot(50, this, &MainWindow::adjustLayoutAfterDockChange);
-        }
-    }
-    
-    // Handle splitter resize events
-    if (event->type() == QEvent::Resize) {
-        QSplitter *splitter = qobject_cast<QSplitter*>(obj);
-        if (splitter && m_stickyPanes) {
-            // Removed forced ratio application
-        }
-    }
-
-    return QMainWindow::eventFilter(obj, event);
-}
-
-void MainWindow::adjustLayoutAfterDockChange()
-{
-    // Readjust splitter sizes after a dock widget is moved or undocked
-    if (!m_stickyPanes) return;
-    
-    QList<QSplitter*> splitters = this->findChildren<QSplitter*>();
-    
-    // Find main horizontal and vertical splitters
-    QSplitter *mainH = nullptr;
-    QSplitter *leftV = nullptr;
-    
-    int bestH = 0;
-    int bestV = 0;
-    for (QSplitter *s : splitters) {
-        if (!s || !s->isVisible()) continue;
-        if (s->orientation() == Qt::Horizontal) {
-            if (s->width() > bestH) { bestH = s->width(); mainH = s; }
-        } else {
-            if (s->height() > bestV) { bestV = s->height(); leftV = s; }
-        }
-    }
-    
-    // Apply 75/25 horizontal split
-    if (mainH && mainH->count() >= 2) {
-        int total = qMax(100, mainH->width());
-        QList<int> currentSizes = mainH->sizes();
-        
-        // Only adjust if both sides are visible
-        if (currentSizes.size() >= 2 && currentSizes[0] > 0 && currentSizes[1] > 0) {
-            QList<int> newSizes;
-            newSizes << total * 3 / 4 << total / 4;
-            mainH->setSizes(newSizes);
-        }
-    }
-    
-    // Apply 60/40 vertical split in left column
-    if (leftV && leftV->count() >= 2) {
-        int total = qMax(100, leftV->height());
-        QList<int> currentSizes = leftV->sizes();
-        
-        // Only adjust if both sides are visible
-        if (currentSizes.size() >= 2 && currentSizes[0] > 0 && currentSizes[1] > 0) {
-            QList<int> newSizes;
-            newSizes << total * 60 / 100 << total * 40 / 100;
-            leftV->setSizes(newSizes);
-        }
-    }
 }
 
 void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
-    // Removed forced splitter ratio application to allow user customization
 }
-
-void MainWindow::changeEvent(QEvent *event)
-{
-    QMainWindow::changeEvent(event);
-    // Removed forced splitter ratio application to allow user customization
-}
-
-    
 
 void MainWindow::addNewEditorTab(const QString &title)
 {

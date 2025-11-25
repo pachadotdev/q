@@ -46,11 +46,7 @@ private:
     void loadSettings();
     void saveSettings();
     void setDefaultLayoutSizes();
-    void applySplitterRatios();
-    void adjustLayoutAfterDockChange();
-    void forceUpdateSplitters();
     void resizeEvent(QResizeEvent *event) override;
-    void changeEvent(QEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
 
     // Central widget
@@ -60,7 +56,6 @@ private:
     // Dock widgets
     QDockWidget *consoleDock;
     QDockWidget *filesDock;
-    QDockWidget *plotsDock;
     QDockWidget *envDock;
     
     // Console tabs
@@ -73,19 +68,14 @@ private:
     
     // Menus
     QMenu *fileMenu;
-    QMenu *editMenu;
     QMenu *codeMenu;
     QMenu *viewMenu;
     QMenu *helpMenu;
     
     // Current file tracking
     QString currentFile;
-    bool m_autoApplyLayout = true;
-    bool m_stickyPanes = true;
     QSplitter *m_mainSplitter = nullptr;
     QSplitter *m_leftSplitter = nullptr;
-
-    bool eventFilter(QObject *obj, QEvent *event) override;
     
     CodeEditor* getCurrentEditor();
     void addNewEditorTab(const QString &title = "Untitled");

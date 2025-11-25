@@ -64,38 +64,10 @@ EnvironmentPane::EnvironmentPane(TerminalWidget *terminal, QWidget *parent)
     fileWatcher->addPath(envFilePath);
     
     connect(fileWatcher, &QFileSystemWatcher::fileChanged, this, &EnvironmentPane::onEnvironmentFileChanged);
-    
-    // Initialize monitor after a short delay to allow R to start
-    // QTimer::singleShot(1000, this, &EnvironmentPane::setupEnvironmentMonitor);
 }
 
 EnvironmentPane::~EnvironmentPane()
 {
-    // Cleanup temp file? Maybe not, useful for debugging.
-}
-
-void EnvironmentPane::setupEnvironmentMonitor()
-{
-    if (!terminal) return;
-    
-    // We need to make sure the qide package is installed/loaded.
-    // For now, we assume it is installed or we try to load it.
-    // We pass the file path to init_monitor.
-    
-    // Use forward slashes for R path
-    /*
-    QString rPath = envFilePath;
-    rPath.replace('\\', '/');
-    
-    QString cmd = QString(
-        "if (requireNamespace('qide', quietly=TRUE)) { "
-        "  qide::init_monitor('%1') "
-        "} else { "
-        "  warning('qide package not found. Please install it from pkg/qide.') "
-        "}").arg(rPath);
-                  
-    terminal->executeCommand(cmd);
-    */
 }
 
 void EnvironmentPane::refreshEnvironment()
