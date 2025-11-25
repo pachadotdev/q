@@ -33,8 +33,7 @@ build() {
     # Configure
     cmake ../Q \
         -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_INSTALL_PREFIX=/usr \
-        -DQT_QMAKE_EXECUTABLE="${_QMAKE_EXECUTABLE}"
+        -DCMAKE_INSTALL_PREFIX=/usr
     
     # Build
     make -j$(nproc)

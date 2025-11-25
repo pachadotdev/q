@@ -8,7 +8,7 @@ set -euo pipefail
 #   ./build.sh --package -> Build Arch package with makepkg
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-Q_SRC="${ROOT_DIR}/Q"
+Q_SRC="${ROOT_DIR}"
 BUILD_DIR="${ROOT_DIR}/build"
 
 # Parse arguments
@@ -100,8 +100,7 @@ cd "${BUILD_DIR}"
 echo ""
 echo "Configuring with CMake..."
 cmake "${Q_SRC}" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DQT_QMAKE_EXECUTABLE="${QMAKE_EXECUTABLE}"
+    -DCMAKE_BUILD_TYPE=Release
 
 # Build
 echo ""
