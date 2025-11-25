@@ -167,8 +167,18 @@ void MainWindow::createMenus()
     QAction *clearConsoleAct = new QAction(tr("Clear Console"), this);
     clearConsoleAct->setShortcut(Qt::CTRL | Qt::Key_L);
     connect(clearConsoleAct, &QAction::triggered, this, [this]() {
-        if (console) {
-            console->clear();
+        // If the current console tab is an R session, call the R function clear()
+        // (equivalent to the right-click -> Clear behavior in the R console).
+        if (!consoleTabs) return;
+        TerminalWidget *active = qobject_cast<TerminalWidget*>(consoleTabs->currentWidget());
+        if (active) {
+            QString shellName = QFileInfo(active->getShell()).fileName().toLower();
+            if (shellName == "r") {
+                active->executeCommand("clear()");
+            } else {
+                // For non-R shells, fall back to clearing the terminal UI
+                active->clear();
+            }
         }
     });
     codeMenu->addAction(clearConsoleAct);

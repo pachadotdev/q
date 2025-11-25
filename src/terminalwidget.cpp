@@ -149,7 +149,14 @@ void TerminalWidget::contextMenuEvent(QContextMenuEvent *event)
     
     // Clear action
     QAction *clearAction = menu->addAction(tr("Clear"));
-    connect(clearAction, &QAction::triggered, this, &QTermWidget::clear);
+    connect(clearAction, &QAction::triggered, this, [this]() {
+        QString shellName = QFileInfo(shellPath).fileName().toLower();
+        if (shellName == "r") {
+            executeCommand("clear()");
+        } else {
+            executeCommand("clear");
+        }
+    });
     
     menu->exec(event->globalPos());
     delete menu;
