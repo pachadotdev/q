@@ -79,6 +79,7 @@ private:
     
     CodeEditor* getCurrentEditor();
     void addNewEditorTab(const QString &title = "Untitled");
+    void updateTabTitle(int index, bool modified);
 };
 
 #endif // MAINWINDOW_H

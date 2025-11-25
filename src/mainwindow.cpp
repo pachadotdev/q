@@ -341,6 +341,7 @@ void MainWindow::setupConnections()
                 if (editor) {
                     editor->setPlainText(content);
                     editor->setProperty("filePath", path);
+                    editor->document()->setModified(false);
                 }
             }
         }
@@ -471,6 +472,57 @@ void MainWindow::addNewEditorTab(const QString &title)
     CodeEditor *editor = new CodeEditor(this);
     int index = editorTabs->addTab(editor, title);
     editorTabs->setCurrentIndex(index);
+    
+    // Track document modifications to update tab title
+    connect(editor->document(), &QTextDocument::modificationChanged, this, [this, editor](bool changed) {
+        // Find which tab this editor is in
+        for (int i = 0; i < editorTabs->count(); ++i) {
+            if (editorTabs->widget(i) == editor) {
+                updateTabTitle(i, changed);
+                break;
+            }
+        }
+    });
+}
+
+void MainWindow::updateTabTitle(int index, bool modified)
+{
+    if (index < 0 || index >= editorTabs->count()) return;
+    
+    CodeEditor *editor = qobject_cast<CodeEditor*>(editorTabs->widget(index));
+    if (!editor) return;
+    
+    // Get the base title (file name or "Untitled")
+    QString baseTitle = editorTabs->tabText(index);
+    // Remove existing asterisk if present
+    baseTitle = baseTitle.replace(" *", "").trimmed();
+    
+    // Update title with asterisk if modified
+    QString newTitle = modified ? baseTitle + " *" : baseTitle;
+    editorTabs->setTabText(index, newTitle);
+    
+    // Apply italic font style using QTabBar API
+    QFont tabFont = editorTabs->tabBar()->font();
+    tabFont.setItalic(modified);
+    
+    // Unfortunately QTabBar doesn't have per-tab font setting directly
+    // We need to use a custom approach with QProxyStyle or update all tabs
+    // For now, we'll use a stylesheet that applies to tabs with asterisk
+    QString stylesheet = QString(
+        "QTabBar::tab { font-style: normal; }"
+        "QTabBar::tab:selected { font-style: %1; }"
+    ).arg(modified ? "italic" : "normal");
+    
+    // Store modification state as a property for potential future use
+    editorTabs->widget(index)->setProperty("modified", modified);
+    
+    // Set tooltip
+    editorTabs->setTabToolTip(index, modified ? tr("Modified - %1").arg(baseTitle) : baseTitle);
+    
+    // Apply stylesheet to make current tab italic if modified
+    if (index == editorTabs->currentIndex()) {
+        editorTabs->setStyleSheet(stylesheet);
+    }
 }
 
 void MainWindow::newFile()
@@ -518,6 +570,7 @@ void MainWindow::openFile()
             if (editor) {
                 editor->setPlainText(content);
                 editor->setProperty("filePath", fileName);
+                editor->document()->setModified(false);
             }
         }
     }
@@ -626,6 +679,7 @@ void MainWindow::saveFile()
         QTextStream out(&file);
         out << editor->toPlainText();
         file.close();
+        editor->document()->setModified(false);
         statusBar()->showMessage(tr("File saved: %1").arg(filePath), 3000);
     }
 }
@@ -683,6 +737,7 @@ void MainWindow::saveFileAs()
             file.close();
             
             editor->setProperty("filePath", fileName);
+            editor->document()->setModified(false);
             editorTabs->setTabText(editorTabs->currentIndex(), QFileInfo(fileName).fileName());
             statusBar()->showMessage(tr("File saved: %1").arg(fileName), 3000);
         }
